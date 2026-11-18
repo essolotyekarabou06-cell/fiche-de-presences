@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Suivi des présences</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--tx:#1b2430;--mu:#667085;--bd:#dfe3e8;--ac:#1f6feb;--P:#d7f3df;--A:#fbd9d9;--R:#fdeccb;--Pe:#dbe8fd;--C:#e8defa;--M:#fbdcec}
+@media(prefers-color-scheme:dark){:root{--bg:#12161c;--card:#1b222b;--tx:#e6eaf0;--mu:#97a1af;--bd:#2d3744;--ac:#4c8dff;--P:#1d4a30;--A:#5a2424;--R:#5a4519;--Pe:#233e6b;--C:#3e2f63;--M:#5a2548;color-scheme:dark}}
+*{box-sizing:border-box}body{margin:0;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0);background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.w{max-width:1000px;margin:auto;padding:14px}
+h1{font-size:19px;margin:0}header{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+input,select,button{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px 10px}
+button{cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.pri{background:var(--ac);color:#fff;border-color:var(--ac)}
+label{font-size:12px;color:var(--mu);display:flex;flex-direction:column;gap:2px}
+nav{display:flex;gap:6px;margin:12px 0;overflow-x:auto}nav .on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
+.c{text-align:center}.mu{color:var(--mu);font-size:13px}.big{font-size:44px;font-weight:700;letter-spacing:1px}
+.xl{font-size:18px;padding:16px 22px;min-width:160px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.c.row{justify-content:center}
+.sc{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:560px}th,td{padding:6px 8px;border-bottom:1px solid var(--bd);text-align:left;white-space:nowrap}
+th{font-size:12px;color:var(--mu)}td input,td select{width:100%;min-width:84px;padding:5px 6px}
+.st-Présent{background:var(--P)}.st-Absent{background:var(--A)}.st-Retard{background:var(--R)}.st-Permission{background:var(--Pe)}.st-Congé{background:var(--C)}.st-Maladie{background:var(--M)}
+.lg{max-width:360px;margin:12vh auto}.lg form{display:flex;flex-direction:column;gap:10px}.err{color:#d92d20;min-height:1.2em}
+</style>
+</head>
+<body><div class="w" id="root"></div>
+<script>
+const $=s=>document.querySelector(s),ST=["Présent","Absent","Retard","Permission","Congé","Maladie"];
+const esc=t=>String(t??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const today=()=>new Date().toLocaleDateString("en-CA",{timeZone:"Africa/Lome"});
+const fr=d=>d.split("-").reverse().join("/"),hm=m=>m==null?"—":String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");
+async function api(u,b){const r=await fetch(u,b?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}:{});
+const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||"Erreur ("+r.status+")");return j}
+let me=null,tab="mine";
+async function boot(){try{const j=await api("/api/auth?a=me");me=j.user;me?shell():login(j.setup)}
+catch(e){$("#root").innerHTML='<div class="card err">Service indisponible : '+esc(e.message)+'</div>'}}
+function login(setup){$("#root").innerHTML=`<div class="card lg"><h1>${setup?"Créer le compte administrateur":"Connexion"}</h1>
+<p class="mu">${setup?"Premier lancement : choisissez votre identifiant et votre mot de passe.":"Entrez votre identifiant et votre mot de passe."}</p>
+<form id="f">${setup?'<label>Nom complet<input id="n" required></label>':""}<label>Identifiant<input id="u" autocomplete="username" required></label>
+<label>Mot de passe<input id="p" type="password" minlength="${setup?6:1}" autocomplete="${setup?"new-password":"current-password"}" required></label>
+<div class="err" id="e"></div><button class="pri">${setup?"Créer et entrer":"Se connecter"}</button></form></div>`;
+$("#f").onsubmit=async e=>{e.preventDefault();try{await api("/api/auth?a="+(setup?"setup":"login"),{username:$("#u").value,password:$("#p").value,name:setup?$("#n").value:""});boot()}catch(x){$("#e").textContent=x.message}}}
+function shell(){const g=me.role!=="agent",a=me.role==="admin";
+const T=[["mine","Mon pointage"],...(g?[["day","Aujourd’hui"],["month","Récapitulatif"]]:[]),...(a?[["users","Comptes"]]:[])];
+$("#root").innerHTML=`<header><h1>Suivi des présences</h1><div class="row"><span class="mu">${esc(me.name)} · ${me.role}</span><button id="out">Déconnexion</button></div></header>
+<nav>${T.map(([k,l])=>`<button data-t="${k}" class="${k===tab?"on":""}">${l}</button>`).join("")}</nav><div id="v"></div>`;
+$("#out").onclick=async()=>{await api("/api/auth?a=logout");me=null;tab="mine";boot()};
+document.querySelector("nav").onclick=e=>{if(e.target.dataset.t){tab=e.target.dataset.t;shell()}};
+({mine:vMine,day:()=>vDay(),month:()=>vMonth(),users:vUsers})[tab]()}
+async function vMine(){const j=await api("/api/pointer"),t=j.rows.find(r=>r.day===j.today)||{};
+$("#v").innerHTML=`<div class="card c"><div class="mu">${fr(j.today)}</div><div class="big">${j.time}</div>
+<div class="row c"><button class="pri xl" id="ar" ${t.arrive?"disabled":""}>Je suis arrivé</button><button class="xl" id="dp" ${!t.arrive||t.depart?"disabled":""}>Je pars</button></div>
+<p>${t.arrive?`Arrivée : <b>${t.arrive}</b> <span class="st-${t.status}" style="padding:2px 8px;border-radius:6px">${t.status}</span>`:"Arrivée non enregistrée."}${t.depart?` · Départ : <b>${t.depart}</b>`:""}</p>
+<p class="mu">Heure limite : ${j.limit}. L’heure enregistrée est celle du serveur.</p></div>
+<div class="card sc"><table><tr><th>Date</th><th>Arrivée</th><th>Départ</th><th>Statut</th><th>Observation</th></tr>
+${j.rows.map(r=>`<tr><td>${fr(r.day)}</td><td>${r.arrive||"—"}</td><td>${r.depart||"—"}</td><td class="st-${r.status||""}">${r.status||"—"}</td><td>${esc(r.note)}</td></tr>`).join("")||'<tr><td colspan="5">Aucun pointage ce mois-ci.</td></tr>'}</table></div>`;
+const act=async a=>{try{await api("/api/pointer",{action:a})}catch(e){alert(e.message)}vMine()};
+$("#ar").onclick=()=>act("arrive");$("#dp").onclick=()=>act("depart")}
+async function vDay(d=today()){const rows=await api("/api/admin?q=day&date="+d);
+$("#v").innerHTML=`<div class="row" style="margin-bottom:10px"><label>Date<input type="date" id="dd" value="${d}"></label><span class="mu">Les agents pointent eux-mêmes ; vous pouvez corriger ou saisir ici.</span></div>
+<div class="card sc"><table><tr><th>Agent</th><th>Service</th><th>Arrivée</th><th>Départ</th><th>Statut</th><th>Observation</th></tr>
+${rows.map(r=>`<tr data-id="${r.id}"><td>${esc(r.name)}</td><td>${esc(r.service)}</td><td><input type="time" name="arrive" value="${r.arrive||""}"></td><td><input type="time" name="depart" value="${r.depart||""}"></td>
+<td><select name="status" class="st-${r.status||""}"><option value="">—</option>${ST.map(s=>`<option${r.status===s?" selected":""}>${s}</option>`).join("")}</select></td><td><input name="note" value="${esc(r.note)}"></td></tr>`).join("")}</table></div>`;
+$("#dd").onchange=e=>vDay(e.target.value||today());
+document.querySelectorAll("tr[data-id]").forEach(tr=>tr.onchange=async()=>{const b={action:"set",user_id:+tr.dataset.id,day:d};
+tr.querySelectorAll("[name]").forEach(x=>b[x.name]=x.value);tr.querySelector("select").className="st-"+b.status;
+try{await api("/api/admin",b)}catch(e){alert(e.message)}})}
+async function vMonth(m=today().slice(0,7)){const rows=await api("/api/admin?q=month&month="+m);
+const K=["present","absent","retard","permission","conge","maladie"],as=r=>{const t=K.reduce((s,k)=>s+r[k],0);return t?Math.round((r.present+r.retard)/t*100)+" %":"—"};
+$("#v").innerHTML=`<div class="row" style="margin-bottom:10px"><label>Mois<input type="month" id="mm" value="${m}"></label><button id="csv">Exporter CSV</button></div>
+<div class="card sc"><table><tr><th>Agent</th><th>Service</th>${ST.map(s=>`<th>${s}</th>`).join("")}<th>Assiduité</th><th>Arrivée moy.</th></tr>
+${rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.service)}</td>${K.map(k=>`<td>${r[k]}</td>`).join("")}<td>${as(r)}</td><td>${hm(r.arr)}</td></tr>`).join("")}</table></div>`;
+$("#mm").onchange=e=>vMonth(e.target.value||m);
+$("#csv").onclick=()=>{const L=[["Nom","Service",...ST,"Assiduité","Arrivée moy."],...rows.map(r=>[r.name,r.service,...K.map(k=>r[k]),as(r),hm(r.arr)])];
+const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+L.map(l=>l.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(";")).join("\n")],{type:"text/csv"}));a.download="presences-"+m+".csv";a.click()}}
+async function vUsers(){const us=await api("/api/admin?q=users"),R=["agent","gestionnaire","admin"];
+$("#v").innerHTML=`<div class="card"><div class="row"><label>Identifiant<input id="nu"></label><label>Nom complet<input id="nn"></label><label>Catégorie<input id="nc"></label><label>Service<input id="ns"></label>
+<label>Mot de passe<input id="np" type="password"></label><label>Rôle<select id="nr">${R.map(r=>`<option>${r}</option>`).join("")}</select></label><button class="pri" id="add">Créer le compte</button></div></div>
+<div class="card sc"><table><tr><th>Identifiant</th><th>Nom</th><th>Service</th><th>Rôle</th><th>Actif</th><th></th></tr>
+${us.map(u=>`<tr data-id="${u.id}"><td>${esc(u.username)}</td><td>${esc(u.name)}</td><td>${esc(u.service)}</td><td><select name="role">${R.map(r=>`<option${u.role===r?" selected":""}>${r}</option>`).join("")}</select></td>
+<td><input type="checkbox" name="active" ${u.active?"checked":""}></td><td><button data-pw>Nouveau mot de passe</button></td></tr>`).join("")}</table></div>`;
+$("#add").onclick=async()=>{try{await api("/api/admin",{action:"user_add",username:$("#nu").value,name:$("#nn").value,category:$("#nc").value,service:$("#ns").value,password:$("#np").value,role:$("#nr").value});vUsers()}catch(e){alert(e.message)}};
+document.querySelectorAll("tr[data-id]").forEach(tr=>{const id=+tr.dataset.id,up=async b=>{try{await api("/api/admin",{action:"user_update",id,...b})}catch(e){alert(e.message)}vUsers()};
+tr.querySelector("[name=role]").onchange=e=>up({role:e.target.value});tr.querySelector("[name=active]").onchange=e=>up({active:e.target.checked});
+tr.querySelector("[data-pw]").onclick=()=>{const p=prompt("Nouveau mot de passe (6 caractères minimum) :");if(p)up({password:p})}})}
+boot();
+</script></body></html>
